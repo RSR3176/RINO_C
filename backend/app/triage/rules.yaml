@@ -1,61 +1,57 @@
-# Rino triage rules (Step 4) — mirrors Settings wireframe rules 1–6.
-# Loaded by app.triage.engine; unit-tested in tests/test_triage_rules.py.
+# Loaded by app.triage.engine; tested in tests/test_triage_rules.py.
 
 version: 1
 
-# Rule 1 — Not a code bug (shown under "Not code bugs", never raised as issues)
+# Rule 1 — Not a code bug
 not_a_code_bug:
   setup_failed:
     enabled: true
-    # Matches setup/install/build step failures and common install messages
     message_patterns:
       - "(?i)setup (command )?failed"
       - "(?i)could not (install|build)"
       - "(?i)error: (command|subprocess).*failed"
+
   missing_package:
     enabled: true
-    # ImportError / ModuleNotFoundError for a third-party dependency
     exception_types:
       - ModuleNotFoundError
       - ImportError
-    # Heuristic: message looks like a missing installed package (not local module)
     message_patterns:
       - "(?i)No module named ['\\\"]?(?!mathutil|tests\\b)[a-zA-Z0-9_]+"
+
   flaky:
     enabled: true
-    # Passes when re-run this many times (engine uses prior_pass_on_rerun flag)
     rerun_count: 2
 
-# Rule 2 — Ignored paths & suppressions
+# Rule 2 — Ignored paths and suppressions
 ignored_paths:
   - migrations/
   - vendor/
   - docs/
+
 respect_inline_suppressions: true
-# noqa (pylint/flake8) and nosec (bandit) — engine checks message/symbol hints
-# and optional suppression_markers on the raw finding
 
 # Rule 3 — Duplicate merging
 duplicate_merging:
   # file_rule_message | file_rule | rule_only
   key: file_rule_message
   merge_across_tools: true
-  link_existing_github_issue: true  # reserved for later steps; no-op in Step 4
+  link_existing_github_issue: true
 
-# Rule 4 — Severity table (base severity before adjustments)
+# Rule 4 — Existing severity table
 severity_table:
   failing_test: critical
   bandit_high: critical
   bandit_medium: high
   bandit_low: medium
-  pylint_error: high        # E*
-  pylint_warning: medium    # W*
-  pylint_style: low         # C*, R*
-  pylint_fatal: critical    # F*
-  pylint_info: low          # I*
+  pylint_error: high
+  pylint_warning: medium
+  pylint_style: low
+  pylint_fatal: critical
+  pylint_info: low
   default: medium
 
-# Rule 5 — Adjustments (±1 severity level)
+# Rule 5 — Severity adjustments
 adjustments:
   enabled: true
   non_production_paths:
@@ -63,36 +59,167 @@ adjustments:
     - examples/
     - sample/
     - samples/
-  non_production_delta: -1   # lower severity
-  regression_delta: +1       # test passed on last run, fails now
+  non_production_delta: -1
+  regression_delta: 1
 
-# Rule 6 — Actions (fixed mapping; Issues/PRs only after Developer approval later)
+# Rule 6 — Existing actions
 actions:
   critical:
-    create_github_issue: true   # deferred to later step
-    suggest_fix: true          # deferred to later step
+    create_github_issue: true
+    suggest_fix: true
     needs_attention: true
+
   high:
     create_github_issue: false
     suggest_fix: false
     needs_attention: true
     tag: Needs attention
+
   medium:
     create_github_issue: false
     suggest_fix: false
     needs_attention: false
+
   low:
     create_github_issue: false
     suggest_fix: false
     needs_attention: false
 
-# Extra: failing tests under these paths are always Critical (Settings "Core modules")
+# Core modules — failing tests are always Critical
 core_modules:
   - src/payments/
   - src/auth/
   - src/core/db.py
 
-# Fix generation limits (Settings → Fix limits; Step 6/9)
+# Fix generation limits
 fix_limits:
   max_attempts: 3
   max_files_changed: 3
+
+# Rule 7 — SOLID, DRY and KISS code-quality analysis
+# These are advisory design findings, not automatically confirmed bugs.
+code_quality:
+  enabled: true
+
+  detector:
+    id: rino_quality_detector
+    language: python
+    mode: static_analysis
+    execute_source_code: false
+
+  principles:
+    SRP:
+      enabled: true
+      name: Single Responsibility Principle
+      description: >
+        Flag classes or functions that may have multiple unrelated
+        responsibilities.
+      default_severity: low
+      confidence: heuristic
+
+    OCP:
+      enabled: true
+      name: Open/Closed Principle
+      description: >
+        Flag repeated conditional branching on types or cases that may
+        indicate extensions require modifying existing logic.
+      default_severity: low
+      confidence: heuristic
+
+    LSP:
+      enabled: true
+      name: Liskov Substitution Principle
+      description: >
+        Flag suspicious overrides that may violate the expected
+        behavior or contract of a base class.
+      default_severity: low
+      confidence: review_required
+
+    ISP:
+      enabled: true
+      name: Interface Segregation Principle
+      description: >
+        Flag potentially oversized interfaces or abstract classes
+        that may force clients to depend on unused methods.
+      default_severity: low
+      confidence: heuristic
+
+    DIP:
+      enabled: true
+      name: Dependency Inversion Principle
+      description: >
+        Flag high-level modules that appear tightly coupled to
+        concrete infrastructure implementations.
+      default_severity: low
+      confidence: heuristic
+
+    DRY:
+      enabled: true
+      name: Don't Repeat Yourself
+      description: >
+        Flag duplicated function bodies or repeated logic that may
+        be candidates for safe reuse.
+      default_severity: low
+      confidence: heuristic
+
+    KISS:
+      enabled: true
+      name: Keep It Simple
+      description: >
+        Flag unusually long, deeply nested, or complex functions
+        for maintainability review.
+      default_severity: low
+      confidence: heuristic
+
+  # Detector findings must include traceable evidence.
+  finding_requirements:
+    require_rule_id: true
+    require_file_path: true
+    require_line_number: true
+    require_evidence: true
+    include_confidence: true
+
+  # Respect repository-level exclusions and inline suppressions.
+  ignored_paths:
+    - migrations/
+    - vendor/
+    - docs/
+    - .venv/
+    - venv/
+    - node_modules/
+    - dist/
+    - build/
+    - __pycache__/
+
+  respect_inline_suppressions: true
+
+  # Avoid duplicate quality findings from the same location and rule.
+  duplicate_merging:
+    key: file_rule_message
+    merge_across_tools: true
+
+  # Quality findings use the existing severity vocabulary.
+  severity:
+    default: low
+    allow_automatic_escalation: false
+    allowed_values:
+      - critical
+      - high
+      - medium
+      - low
+
+  # Quality findings do not automatically trigger bug-fix actions.
+  actions:
+    create_github_issue: false
+    suggest_fix: false
+    auto_create_pull_request: false
+    needs_attention: false
+    require_developer_approval: true
+
+  # Optional AI review can assess context-sensitive design findings.
+  ai_review:
+    enabled: true
+    confirm_static_findings: false
+    may_change_severity: false
+    may_create_issue: false
+    may_create_pull_request: false
