@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" tests="3" failures="1" errors="0" skipped="0">
+    <testcase classname="tests.test_mathutil" name="test_add" time="0.01"/>
+    <testcase classname="tests.test_mathutil" name="test_divide" time="0.01"/>
+    <testcase classname="tests.test_mathutil" name="test_divide_by_zero" time="0.02">
+      <failure message="AssertionError: expected ZeroDivisionError">AssertionError: expected ZeroDivisionError</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

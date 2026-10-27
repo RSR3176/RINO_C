@@ -1,0 +1,98 @@
+# Rino triage rules (Step 4) — mirrors Settings wireframe rules 1–6.
+# Loaded by app.triage.engine; unit-tested in tests/test_triage_rules.py.
+
+version: 1
+
+# Rule 1 — Not a code bug (shown under "Not code bugs", never raised as issues)
+not_a_code_bug:
+  setup_failed:
+    enabled: true
+    # Matches setup/install/build step failures and common install messages
+    message_patterns:
+      - "(?i)setup (command )?failed"
+      - "(?i)could not (install|build)"
+      - "(?i)error: (command|subprocess).*failed"
+  missing_package:
+    enabled: true
+    # ImportError / ModuleNotFoundError for a third-party dependency
+    exception_types:
+      - ModuleNotFoundError
+      - ImportError
+    # Heuristic: message looks like a missing installed package (not local module)
+    message_patterns:
+      - "(?i)No module named ['\\\"]?(?!mathutil|tests\\b)[a-zA-Z0-9_]+"
+  flaky:
+    enabled: true
+    # Passes when re-run this many times (engine uses prior_pass_on_rerun flag)
+    rerun_count: 2
+
+# Rule 2 — Ignored paths & suppressions
+ignored_paths:
+  - migrations/
+  - vendor/
+  - docs/
+respect_inline_suppressions: true
+# noqa (pylint/flake8) and nosec (bandit) — engine checks message/symbol hints
+# and optional suppression_markers on the raw finding
+
+# Rule 3 — Duplicate merging
+duplicate_merging:
+  # file_rule_message | file_rule | rule_only
+  key: file_rule_message
+  merge_across_tools: true
+  link_existing_github_issue: true  # reserved for later steps; no-op in Step 4
+
+# Rule 4 — Severity table (base severity before adjustments)
+severity_table:
+  failing_test: critical
+  bandit_high: critical
+  bandit_medium: high
+  bandit_low: medium
+  pylint_error: high        # E*
+  pylint_warning: medium    # W*
+  pylint_style: low         # C*, R*
+  pylint_fatal: critical    # F*
+  pylint_info: low          # I*
+  default: medium
+
+# Rule 5 — Adjustments (±1 severity level)
+adjustments:
+  enabled: true
+  non_production_paths:
+    - scripts/
+    - examples/
+    - sample/
+    - samples/
+  non_production_delta: -1   # lower severity
+  regression_delta: +1       # test passed on last run, fails now
+
+# Rule 6 — Actions (fixed mapping; Issues/PRs only after Developer approval later)
+actions:
+  critical:
+    create_github_issue: true   # deferred to later step
+    suggest_fix: true          # deferred to later step
+    needs_attention: true
+  high:
+    create_github_issue: false
+    suggest_fix: false
+    needs_attention: true
+    tag: Needs attention
+  medium:
+    create_github_issue: false
+    suggest_fix: false
+    needs_attention: false
+  low:
+    create_github_issue: false
+    suggest_fix: false
+    needs_attention: false
+
+# Extra: failing tests under these paths are always Critical (Settings "Core modules")
+core_modules:
+  - src/payments/
+  - src/auth/
+  - src/core/db.py
+
+# Fix generation limits (Settings → Fix limits; Step 6/9)
+fix_limits:
+  max_attempts: 3
+  max_files_changed: 3

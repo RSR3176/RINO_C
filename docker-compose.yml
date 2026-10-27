@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rino}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rino}
+      POSTGRES_DB: ${POSTGRES_DB:-rino}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rino} -d ${POSTGRES_DB:-rino}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://rino:rino@postgres:5432/rino}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
+      RINO_SAMPLES_DIR: /samples
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Do not bind-mount ./backend over /app — an empty host dir (wrong cwd
+      # or incomplete unzip) would hide the image code and break imports.
+      - ./samples:/samples:ro
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://rino:rino@postgres:5432/rino}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RINO_SAMPLES_DIR: /samples
+      # Workdir inside the worker (Docker named volume — shared with sandbox containers)
+      RINO_SANDBOX_WORK_DIR: /var/rino/sandbox
+      RINO_SANDBOX_VOLUME: ${RINO_SANDBOX_VOLUME:-rino_sandbox_data}
+      RINO_SANDBOX_TIMEOUT_SECONDS: ${RINO_SANDBOX_TIMEOUT_SECONDS:-600}
+      RINO_SANDBOX_MEMORY: ${RINO_SANDBOX_MEMORY:-1g}
+      RINO_SANDBOX_CPUS: ${RINO_SANDBOX_CPUS:-1.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./samples:/samples:ro
+      - sandbox_data:/var/rino/sandbox
+      # Required so SandboxRunner can start sibling containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: python -m app.worker
+
+  frontend:
+    build:
+      context: ./frontend
+    env_file:
+      - .env
+    environment:
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    # Use image contents (same empty-bind-mount pitfall as backend).
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  sandbox_data:

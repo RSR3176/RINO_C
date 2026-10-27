@@ -1,0 +1,16 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+pydantic==2.10.3
+pydantic-settings==2.6.1
+httpx==0.28.1
+itsdangerous==2.2.0
+python-multipart==0.0.17
+redis==5.2.1
+rq==2.0.0
+PyJWT[crypto]==2.10.1
+cryptography==44.0.0
+docker==7.1.0
+PyYAML==6.0.2
